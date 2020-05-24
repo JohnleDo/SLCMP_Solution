@@ -9,25 +9,13 @@ class SLCMP:
 
     def organize_plans(self, metal_level):
         """
-        This function will get rid of rows that aren't of the metal_level of Silver. Then it will get rid of
-        duplicates based on state, rate, and rate_area while just keeping the first occurance.
+        This function will get rid of rows that aren't of the metal_level specified. Then we organize them for easier
+        reading (this part isn't really needed but its nice to have for debugging). After that we will then rank them
+        based on the state and rate_area of their price to determine the second lowest cost later on.
         """
         self.plans = self.plans[self.plans["metal_level"] == metal_level]
         self.plans = self.plans.sort_values(["state", "rate"])
-        self.plans = self.plans.drop_duplicates(subset=["state", "rate", "rate_area"], keep="first")
-
-    def find_slcmp_in_plans(self):
-        """
-        This function will find the second smallest Silver value per rate_area and state. This is done by finding the
-        smallest rate value's index within a group based on the columns state and rate area. Then it will remove it from
-        the original dataframe and then proceed to obtain the next smallest value just like before which is basically our
-        second smallest value. After that we'll locate all those values with the index we got with our original dataframe to
-        get the full information.
-        """
-        firstMinindexes = self.plans.groupby(["state", "rate_area"]).idxmin()
-        self.plans = self.plans.drop(firstMinindexes["rate"])
-        secondMinindexes = self.plans.groupby(["state", "rate_area"]).idxmin()
-        self.plans = self.plans.loc[secondMinindexes["rate"].tolist()]
+        self.plans["Rank"] = self.plans.groupby(["state", "rate_area"])["rate"].rank(method="dense")
 
     def find_rate_for_slcmp(self):
         """
@@ -47,13 +35,15 @@ class SLCMP:
 
             if len(check_rate_area) <= 1:
                 for zipcode_index, zipcode_row in zipcodes.iterrows():
-                    info = self.plans.loc[(self.plans["state"] == zipcode_row["state"]) & (self.plans["rate_area"] == zipcode_row["rate_area"])]
-                    if not info.empty:
-                        self.slcmp.loc[slcmp_index, "rate"] = info.iloc[0]["rate"]
+                    info = self.plans.loc[(self.plans["state"] == zipcode_row["state"]) &
+                                          (self.plans["rate_area"] == zipcode_row["rate_area"]) &
+                                          (self.plans["Rank"] == 2.0)]
+                if not info.empty:
+                    self.slcmp.loc[slcmp_index, "rate"] = info.iloc[0]["rate"]
 
 
 if __name__ == '__main__':
     slcsp = SLCMP(pd.read_csv("slcsp.csv"), pd.read_csv("plans.csv"), pd.read_csv("zips.csv"))
     slcsp.organize_plans("Silver")
-    slcsp.find_slcmp_in_plans()
     slcsp.find_rate_for_slcmp()
+    print(slcsp.slcmp.to_string())
